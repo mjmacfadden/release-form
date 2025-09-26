@@ -77,7 +77,7 @@
               <hr>
               <small class="text-muted">Your inputs are saved to the URL so you can share the filled link.</small>
               <div class="d-grid gap-2 mt-3">
-                 <button id="copy-link" class="btn btn-outline-secondary ms-2">Copy Link</button>
+                <button id="copy-link" class="btn btn-outline-secondary ms-2">Copy Link</button>
               </div>
             </div>
           </div>
@@ -249,7 +249,7 @@
         if (dt) datePreview.classList.remove('placeholder'); else datePreview.classList.add('placeholder');
       }
 
-      // Update URL, preview, and scroll to bottom on input
+      // Update URL, preview, and scroll to bottom on desktop only
       nameInput.addEventListener('input', (e) => {
         const val = e.target.value;
         setParam('name', val);
@@ -263,13 +263,17 @@
           dateInput.value = todayStr;
         }
         renderPreview();
-        page3Wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (window.innerWidth >= 992) { // Desktop breakpoint (Bootstrap lg)
+          page3Wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       });
 
       dateInput.addEventListener('input', (e) => {
         setParam('date', e.target.value);
         renderPreview();
-        page3Wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (window.innerWidth >= 992) { // Desktop breakpoint (Bootstrap lg)
+          page3Wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       });
 
       // Clear inputs
