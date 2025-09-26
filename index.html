@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Release - Fill &amp; Download</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Cursive font for signature -->
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
+
+    <style>
+      body { padding: 1rem; background:#f8f9fa; }
+      .paper {
+        background: white;
+        padding: 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        max-width: 816px;
+        margin: 0 auto;
+        font-size: 16px;
+        line-height: 1.45;
+      }
+      .signature {
+        font-family: 'Great Vibes', cursive;
+        font-size: 48px;
+        color: #000;
+      }
+      .placeholder {
+        color: #6c757d;
+      }
+      @media (max-width: 816px) {
+        .paper { padding: 0; }
+        .signature { font-size: 36px; }
+      }
+      /* Make sure the PDF output looks similar to Letter print */
+      .pdf-page {
+        width: 8.5in; /* Letter */
+        min-height: 11in;
+        padding: 0;
+        margin: 0 auto;
+        background: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">Fill Release</h4>
+        <div>
+          <button id="download" class="btn btn-primary">Download PDF</button>
+          <button id="copy-link" class="btn btn-outline-secondary ms-2">Copy Link</button>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-12 col-lg-4">
+          <div class="card sticky-top" style="top:1rem">
+            <div class="card-body">
+              <h6 class="card-title">Inputs</h6>
+
+              <label class="form-label">Name (printed & signature)</label>
+              <input id="name" class="form-control mb-2" placeholder="Full name for printed and signature">
+
+              <label class="form-label">Date</label>
+              <input id="date" type="date" class="form-control mb-2">
+
+              <div class="d-grid gap-2 mt-3">
+                <button id="fill-copy" class="btn btn-outline-primary">Fill preview</button>
+                <button id="clear" class="btn btn-outline-danger">Clear</button>
+              </div>
+
+              <hr>
+              <small class="text-muted">Your inputs are saved to the URL so you can share the filled link.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-lg-8">
+          <div id="preview-wrapper" class="paper" role="region" aria-label="Document preview">
+            <!-- Render the actual release.pdf first page into a canvas, and overlay our fields -->
+            <div style="max-height:33in; overflow:hidden;">
+                <div id="pdf-content" class="pdf-page" style="position:relative; padding:0;">
+                <div id="pdf-viewer" style="position:relative; width:100%;">
+                    <!-- Page 1 -->
+                    <div class="page-wrapper" style="position:relative; margin-bottom:0;">
+                    <canvas id="pdf-canvas-1" style="display:block; width:100%; height:auto;"></canvas>
+                    </div>
+                    <!-- Page 2 -->
+                    <div class="page-wrapper" style="position:relative; margin-bottom:0;">
+                    <canvas id="pdf-canvas-2" style="display:block; width:100%; height:auto;"></canvas>
+                    </div>
+                    <!-- Page 3 (overlay target) -->
+                    <div id="page3-wrapper" class="page-wrapper" style="position:relative;">
+                    <canvas id="pdf-canvas-3" style="display:block; width:100%; height:auto;"></canvas>
+                    <div id="pdf-overlay" style="position:absolute; left:0; top:0; pointer-events:none;">
+                        <!-- overlayed preview texts (absolute positions adjusted after render) -->
+                        <div id="printed-name-preview" class="fw-bold placeholder" style="position:absolute; left:100px; top:600px; font-size:16px; pointer-events:none;">(your printed name)</div>
+                        <div id="signature-preview" class="signature placeholder" style="position:absolute; left:90px; top:655px; font-size:36px; pointer-events:none;">(signature)</div>
+                        <div id="date-preview" class="fw-normal placeholder" style="position:absolute; left:450px; top:680px; font-size:14px; pointer-events:none;">(date)</div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+                <!--<div style="padding:12px; font-size:12px; color:#6c757d">Rendered from <code>release.pdf</code>. Use "Download PDF" to export a copy including your entries.</div>-->
+                </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- PDF.js to render release.pdf -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.min.js"></script>
+  <!-- html2pdf (includes html2canvas & jsPDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script>
+      // Helpers for URL params
+      function setParam(key, value) {
+        const u = new URL(window.location);
+        if (value === null || value === '') {
+          u.searchParams.delete(key);
+        } else {
+          u.searchParams.set(key, value);
+        }
+        history.replaceState(null, '', u.toString());
+      }
+
+      function getParam(key) { return new URL(window.location).searchParams.get(key); }
+
+      // Elements
+  const nameInput = document.getElementById('name');
+      const dateInput = document.getElementById('date');
+
+      const printedPreview = document.getElementById('printed-name-preview');
+      const signaturePreview = document.getElementById('signature-preview');
+      const datePreview = document.getElementById('date-preview');
+
+      // Populate from URL on load
+      function populateFromURL() {
+        const nameParam = getParam('name');
+        const dateParam = getParam('date');
+        if (nameParam !== null) nameInput.value = nameParam;
+        // only set date from URL if present — otherwise keep the default set in init()
+        if (dateParam !== null) dateInput.value = dateParam;
+        renderPreview();
+      }
+
+      // PDF rendering using PDF.js
+      const PDF_URL = './release.pdf';
+  const pdfCanvas1 = document.getElementById('pdf-canvas-1');
+  const pdfCanvas2 = document.getElementById('pdf-canvas-2');
+  const pdfCanvas3 = document.getElementById('pdf-canvas-3');
+  const pdfOverlay = document.getElementById('pdf-overlay');
+      let pdfDoc = null;
+      let pdfRenderViewport = null;
+
+      // configure worker
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.worker.min.js';
+      }
+
+      async function renderPageToCanvas(pageNum, canvasEl, containerWidth) {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = containerWidth / viewport.width;
+        const renderViewport = page.getViewport({ scale });
+        const ratio = window.devicePixelRatio || 1;
+        canvasEl.width = Math.floor(renderViewport.width * ratio);
+        canvasEl.height = Math.floor(renderViewport.height * ratio);
+        canvasEl.style.width = Math.floor(renderViewport.width) + 'px';
+        canvasEl.style.height = Math.floor(renderViewport.height) + 'px';
+        const ctx = canvasEl.getContext('2d');
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+        return renderViewport;
+      }
+
+      async function loadPdf() {
+        try {
+          const loadingTask = pdfjsLib.getDocument(PDF_URL);
+          pdfDoc = await loadingTask.promise;
+          const container = document.getElementById('pdf-viewer');
+          const containerWidth = container.clientWidth;
+
+          // Render page 1 if available
+          if (pdfDoc.numPages >= 1) {
+            await renderPageToCanvas(1, pdfCanvas1, containerWidth);
+          }
+          // Render page 2 if available
+          if (pdfDoc.numPages >= 2) {
+            await renderPageToCanvas(2, pdfCanvas2, containerWidth);
+          }
+
+          // Render page 3 (target for signature). If missing, create a blank white page sized like page 1
+          if (pdfDoc.numPages >= 3) {
+            const vp3 = await renderPageToCanvas(3, pdfCanvas3, containerWidth);
+            // size overlay to match page3
+            pdfOverlay.style.width = pdfCanvas3.style.width;
+            pdfOverlay.style.height = pdfCanvas3.style.height;
+          } else {
+            // create a blank white page sized like page1 or container
+            const referenceCanvas = pdfCanvas1 || pdfCanvas2;
+            const refWidth = referenceCanvas ? referenceCanvas.clientWidth : containerWidth;
+            const refHeight = referenceCanvas ? referenceCanvas.clientHeight : Math.floor(refWidth * 1.3);
+            pdfCanvas3.width = Math.floor(refWidth * (window.devicePixelRatio || 1));
+            pdfCanvas3.height = Math.floor(refHeight * (window.devicePixelRatio || 1));
+            pdfCanvas3.style.width = refWidth + 'px';
+            pdfCanvas3.style.height = refHeight + 'px';
+            const ctx3 = pdfCanvas3.getContext('2d');
+            ctx3.fillStyle = '#fff'; ctx3.fillRect(0, 0, pdfCanvas3.width, pdfCanvas3.height);
+            pdfOverlay.style.width = pdfCanvas3.style.width;
+            pdfOverlay.style.height = pdfCanvas3.style.height;
+          }
+        } catch (err) {
+          console.error('Could not load PDF:', err);
+        }
+      }
+
+      function parseLocalDate(yyyyMmDd) {
+        if (!yyyyMmDd) return null;
+        const parts = yyyyMmDd.split('-');
+        if (parts.length !== 3) return null;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+        // construct local date
+        return new Date(y, m - 1, d);
+      }
+
+      function formatDateForPreview(v) {
+        if (!v) return '(date)';
+        // create local date from yyyy-mm-dd string to avoid UTC parsing
+        const d = (v instanceof Date) ? v : parseLocalDate(v);
+        if (!d) return v;
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+
+      function renderPreview() {
+        const name = nameInput.value.trim();
+        const dt = dateInput.value;
+
+        printedPreview.textContent = name || '(your printed name)';
+        if (name) printedPreview.classList.remove('placeholder'); else printedPreview.classList.add('placeholder');
+
+        signaturePreview.textContent = name || '(signature)';
+        if (name) signaturePreview.classList.remove('placeholder'); else signaturePreview.classList.add('placeholder');
+
+        datePreview.textContent = dt ? formatDateForPreview(dt) : '(date)';
+        if (dt) datePreview.classList.remove('placeholder'); else datePreview.classList.add('placeholder');
+      }
+
+  // Update URL on change
+  nameInput.addEventListener('input', (e) => {
+    const val = e.target.value;
+    setParam('name', val);
+    // if the user just entered a name and there's no date param, add today's local date to URL
+    if (val && !getParam('date')) {
+      const td = new Date();
+      const yyyy = td.getFullYear();
+      const mm = String(td.getMonth() + 1).padStart(2, '0');
+      const dd = String(td.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      setParam('date', todayStr);
+      dateInput.value = todayStr;
+    }
+    renderPreview();
+  });
+  dateInput.addEventListener('input', (e) => { setParam('date', e.target.value); renderPreview(); });
+
+      document.getElementById('fill-copy').addEventListener('click', (e) => { renderPreview(); });
+      document.getElementById('clear').addEventListener('click', () => {
+        nameInput.value = '';
+        dateInput.value = '';
+        setParam('name', ''); setParam('date', '');
+        renderPreview();
+      });
+
+      // Download as PDF
+      document.getElementById('download').addEventListener('click', async () => {
+        renderPreview();
+        const element = document.getElementById('pdf-content');
+        const opt = {
+          margin:       [0, 0, 0, 0],
+          filename:     'release_signed.pdf',
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true },
+          jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+        // generate
+        try {
+          await html2pdf().set(opt).from(element).save();
+        } catch (err) {
+          console.error('PDF generation error', err);
+          alert('Could not generate PDF: ' + err.message);
+        }
+      });
+
+      // Copy shareable link
+      document.getElementById('copy-link').addEventListener('click', async () => {
+        const url = window.location.toString();
+        try {
+          await navigator.clipboard.writeText(url);
+          alert('Link copied to clipboard');
+        } catch (err) {
+          // fallback
+          const ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+          alert('Link copied to clipboard');
+        }
+      });
+
+      // Initialize defaults
+      (function init(){
+        // default date to today if not present
+        if (!getParam('date')) {
+          // compute local date yyyy-mm-dd to avoid UTC off-by-one issues
+          const td = new Date();
+          const yyyy = td.getFullYear();
+          const mm = String(td.getMonth() + 1).padStart(2, '0');
+          const dd = String(td.getDate()).padStart(2, '0');
+          dateInput.value = `${yyyy}-${mm}-${dd}`;
+        }
+        // load PDF and then populate/ render preview
+        loadPdf().then(() => {
+          populateFromURL();
+        }).catch(() => { populateFromURL(); });
+      })();
+    </script>
+  </body>
+</html>
